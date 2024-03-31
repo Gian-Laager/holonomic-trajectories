@@ -1,3 +1,7 @@
+use std::error::Error;
+use std::fmt::Display;
+use std::mem::MaybeUninit;
+
 use nalgebra::{ComplexField, SVector, Scalar};
 #[cfg(test)]
 use quickcheck::Arbitrary;
@@ -6,6 +10,38 @@ use rand::prelude::*;
 #[cfg(test)]
 use rand::rngs::SmallRng;
 
+#[derive(Clone, Copy, Debug)]
+pub enum SCurveGenerationError {
+    StartVelTooHigh,
+    EndVelTooHigh,
+    NotEnoughTimeToReachEndVel,
+    MaxVelMustBePositive,
+    MaxAccelMustBePositive,
+}
+
+impl Display for SCurveGenerationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SCurveGenerationError::StartVelTooHigh => {
+                write!(f, "Start velocity is higher than max velocity")
+            }
+            SCurveGenerationError::EndVelTooHigh => {
+                write!(f, "End velocity is higher than max velocity")
+            }
+            SCurveGenerationError::NotEnoughTimeToReachEndVel => {
+                write!(f, "Not enough time to reach end velocity")
+            }
+            SCurveGenerationError::MaxVelMustBePositive => {
+                write!(f, "Max velocity must be positive")
+            }
+            SCurveGenerationError::MaxAccelMustBePositive => {
+                write!(f, "Max acceleration must be positive")
+            }
+        }
+    }
+}
+
+impl Error for SCurveGenerationError {}
 #[derive(Clone, Debug)]
 pub struct SCurve {
     start_time: f64,
@@ -15,51 +51,6 @@ pub struct SCurve {
     end_vel: f64,
     max_vel: f64,
     max_accel: f64,
-}
-
-#[cfg(test)]
-impl Arbitrary for SCurve {
-    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
-        let mut rng1 = SmallRng::seed_from_u64(u64::arbitrary(g));
-        let mut rng2 = SmallRng::seed_from_u64(u64::arbitrary(g));
-        let mut rng3 = SmallRng::seed_from_u64(u64::arbitrary(g));
-        let mut arb_float = || rng1.gen_range(-10000.0..10000.0_f64);
-
-        let mut arb_pos_float =
-            || -> f64 { rng2.gen_range(f32::EPSILON.sqrt() as f64..10000.0_f64) };
-
-        let max_vel = arb_pos_float();
-
-        let start_time = arb_float();
-        let start_pos = arb_float();
-        let end_pos = arb_float();
-        let start_vel = rng3.gen_range(-max_vel..max_vel);
-        let max_accel = arb_pos_float();
-
-        let distance = (end_pos - start_pos).abs();
-        let t = (-start_vel + (start_vel.powi(2) + 2.0 * max_accel * distance).sqrt()) / max_accel;
-        let max_end_vel = (start_vel + max_accel * t).abs() * 0.99;
-
-        let end_vel = rng3.gen_range(-max_end_vel..max_end_vel);
-        let maybe_curve = SCurve::try_new(
-            start_time, start_pos, start_vel, end_pos, end_vel, max_vel, max_accel,
-        );
-
-        if let Ok(curve) = maybe_curve {
-            return curve;
-        } else {
-            return SCurve::try_new(0.0, 0.0, 0.0, 1.0, 0.0, 0.5, 0.5).unwrap();
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum SCurveGenerationError {
-    StartVelTooHigh,
-    EndVelTooHigh,
-    NotEnoughTimeToReachEndVel,
-    MaxVelMustBePositive,
-    MaxAccelMustBePositive,
 }
 
 impl SCurve {
@@ -102,7 +93,7 @@ impl SCurve {
             return Err(SCurveGenerationError::NotEnoughTimeToReachEndVel);
         }
 
-        if curve.max_vel <= 0.0 {
+        if curve.max_vel < 0.0 {
             return Err(SCurveGenerationError::MaxVelMustBePositive);
         }
 
@@ -110,11 +101,11 @@ impl SCurve {
             return Err(SCurveGenerationError::MaxAccelMustBePositive);
         }
 
-        if curve.start_vel.abs() > curve.max_vel {
+        if curve.start_vel.abs() > curve.max_vel && curve.max_vel > 0.0 {
             return Err(SCurveGenerationError::StartVelTooHigh);
         }
-
-        if curve.end_vel.abs() > curve.max_vel {
+        
+        if curve.end_vel.abs() > curve.max_vel && curve.max_vel > 0.0 {
             return Err(SCurveGenerationError::EndVelTooHigh);
         }
 
@@ -169,7 +160,7 @@ impl SCurve {
     }
 
     fn accel_distance(&self) -> f64 {
-        (self.pos_after_accel() - self.start_pos).abs() 
+        (self.pos_after_accel() - self.start_pos).abs()
     }
 
     fn vel_target(&self) -> f64 {
@@ -250,6 +241,42 @@ mod tests {
 
     use super::*;
     use crate::utils::test_utils::{assert_feq, float_compare, write_data_to_file};
+
+    impl Arbitrary for SCurve {
+        fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+            let mut rng1 = SmallRng::seed_from_u64(u64::arbitrary(g));
+            let mut rng2 = SmallRng::seed_from_u64(u64::arbitrary(g));
+            let mut rng3 = SmallRng::seed_from_u64(u64::arbitrary(g));
+            let mut arb_float = || rng1.gen_range(-10000.0..10000.0_f64);
+
+            let mut arb_pos_float =
+                || -> f64 { rng2.gen_range(f32::EPSILON.sqrt() as f64..10000.0_f64) };
+
+            let max_vel = arb_pos_float();
+
+            let start_time = arb_float();
+            let start_pos = arb_float();
+            let end_pos = arb_float();
+            let start_vel = rng3.gen_range(-max_vel..max_vel);
+            let max_accel = arb_pos_float();
+
+            let distance = (end_pos - start_pos).abs();
+            let t =
+                (-start_vel + (start_vel.powi(2) + 2.0 * max_accel * distance).sqrt()) / max_accel;
+            let max_end_vel = (start_vel + max_accel * t).abs() * 0.99;
+
+            let end_vel = rng3.gen_range(-max_end_vel..max_end_vel);
+            let maybe_curve = SCurve::try_new(
+                start_time, start_pos, start_vel, end_pos, end_vel, max_vel, max_accel,
+            );
+
+            if let Ok(curve) = maybe_curve {
+                return curve;
+            } else {
+                return SCurve::try_new(0.0, 0.0, 0.0, 1.0, 0.0, 0.5, 0.5).unwrap();
+            }
+        }
+    }
 
     #[test]
     fn test_scurve() {
@@ -356,6 +383,42 @@ mod tests {
             .iter()
             .for_each(|v| assert!(v.abs() <= max_accel * 1.01));
 
+        assert_feq(sample_pos[0], start_pos);
+        assert_feq(*sample_pos.last().unwrap(), end_pos);
+    }
+
+    #[test]
+    fn stationary_scurve() {
+        let start_pos = 0.0;
+        let start_vel = 0.0;
+        let end_pos = 0.0;
+        let end_vel = 0.0;
+        let max_speed = 10.0;
+        let max_accel = 5.0;
+
+        const N_SAMPLES: usize = 100;
+        const N_SAMPLES_F: f64 = N_SAMPLES as f64;
+
+        let curve = SCurve::try_new(
+            0.0, start_pos, start_vel, end_pos, end_vel, max_speed, max_accel,
+        )
+        .unwrap();
+
+        let duration = curve.duration();
+        let sample_pos = (0..=N_SAMPLES)
+            .map(|i| curve.sample_pos(i as f64 * duration / N_SAMPLES_F))
+            .collect::<Vec<f64>>();
+
+        let sample_vel = (0..=N_SAMPLES)
+            .map(|i| curve.sample_vel(i as f64 * duration / N_SAMPLES_F))
+            .collect::<Vec<f64>>();
+
+        let sample_accel = (0..=N_SAMPLES)
+            .map(|i| curve.sample_accel(i as f64 * duration / N_SAMPLES_F))
+            .collect::<Vec<f64>>();
+
+        sample_accel.iter().for_each(|a| assert!(*a <= max_accel));
+        sample_vel.iter().for_each(|v| assert!(*v <= max_speed));
 
         assert_feq(sample_pos[0], start_pos);
         assert_feq(*sample_pos.last().unwrap(), end_pos);
@@ -402,7 +465,9 @@ mod tests {
             return false;
         }
 
-        println!("################################################################################");
+        println!(
+            "################################################################################"
+        );
 
         return true;
     }
