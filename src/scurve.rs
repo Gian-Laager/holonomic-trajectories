@@ -93,7 +93,6 @@ impl SCurve {
                 / 2.0_f64)
                 .sqrt()
                 * 0.99;
-            println!("Updated max_vel from {} to {}", curve.max_vel, max_vel_new);
             curve.max_vel = max_vel_new;
         }
 
@@ -118,16 +117,6 @@ impl SCurve {
         if curve.end_vel.abs() > curve.max_vel {
             return Err(SCurveGenerationError::EndVelTooHigh);
         }
-
-        println!("accel_duration: {}", curve.accel_duration());
-        println!("cruise_duration: {}", curve.cruise_duration());
-        println!("deccel_duration: {}", curve.deccel_duration());
-        println!("distance: {}", curve.distance());
-        println!("accel_distance: {}", curve.accel_distance());
-        println!("deccel_distance: {}", curve.deccel_distance());
-        println!("duration: {}", curve.duration());
-        println!("accel_target: {}", curve.accel_target());
-        println!("deccel_target: {}", curve.deccel_target());
 
         return Ok(curve);
     }
@@ -389,16 +378,6 @@ mod tests {
         let sample_accel = (0..=100)
             .map(|i| curve.sample_accel(i as f64 * duration / 100.0))
             .collect::<Vec<f64>>();
-
-        // if !sample_accel.iter().all(|a| *a <= curve.max_accel * 1.1) {
-        //     println!("Failed accel check");
-        //     return false;
-        // }
-        //
-        // if !sample_vel.iter().all(|v| *v <= curve.max_vel * 1.1) {
-        //     println!("Failed vel check");
-        //     return false;
-        // }
 
         if !float_compare(sample_pos[0], curve.start_pos, 1e-2) {
             println!(
