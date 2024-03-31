@@ -33,14 +33,14 @@ impl Arbitrary for SCurve {
         let start_time = arb_float();
         let start_pos = arb_float();
         let end_pos = arb_float();
-        let start_vel = rng3.gen_range(0.0..max_vel) * (end_pos - start_pos).signum();
+        let start_vel = rng3.gen_range(-max_vel..max_vel);
         let max_accel = arb_pos_float();
 
         let distance = (end_pos - start_pos).abs();
         let t = (-start_vel + (start_vel.powi(2) + 2.0 * max_accel * distance).sqrt()) / max_accel;
         let max_end_vel = (start_vel + max_accel * t).abs() * 0.99;
 
-        let end_vel = rng3.gen_range(0.0..max_end_vel) * (end_pos - start_pos).signum();
+        let end_vel = rng3.gen_range(-max_end_vel..max_end_vel);
         let maybe_curve = SCurve::try_new(
             start_time, start_pos, start_vel, end_pos, end_vel, max_vel, max_accel,
         );
@@ -60,8 +60,6 @@ pub enum SCurveGenerationError {
     NotEnoughTimeToReachEndVel,
     MaxVelMustBePositive,
     MaxAccelMustBePositive,
-    EndVelNotAlongPath,
-    StartVelNotAlongPath,
 }
 
 impl SCurve {
@@ -119,14 +117,6 @@ impl SCurve {
 
         if curve.end_vel.abs() > curve.max_vel {
             return Err(SCurveGenerationError::EndVelTooHigh);
-        }
-
-        if curve.end_vel.signum() != (curve.end_pos - curve.start_pos).signum() {
-            return Err(SCurveGenerationError::EndVelNotAlongPath);
-        }
-
-        if curve.start_vel.signum() != (curve.end_pos - curve.start_pos).signum() {
-            return Err(SCurveGenerationError::StartVelNotAlongPath);
         }
 
         println!("accel_duration: {}", curve.accel_duration());
