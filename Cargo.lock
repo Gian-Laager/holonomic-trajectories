@@ -67,6 +67,7 @@ dependencies = [
  "quickcheck",
  "quickcheck_macros",
  "rand",
+ "splines",
 ]
 
 [[package]]
@@ -299,6 +300,15 @@ dependencies = [
  "num-traits",
  "paste",
  "wide",
+]
+
+[[package]]
+name = "splines"
+version = "4.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "228c4551e53c672e86439509545dd7ffcb966b6876c58b108e433a30e6117101"
+dependencies = [
+ "nalgebra",
 ]
 
 [[package]]

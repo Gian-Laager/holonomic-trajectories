@@ -6,6 +6,7 @@ extern crate quickcheck_macros;
 
 mod utils;
 mod scurve;
+mod spline;
 
 use nalgebra::{DimName, SVector, Scalar, Vector2, Vector3};
 
