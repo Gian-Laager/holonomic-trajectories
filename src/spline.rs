@@ -51,41 +51,16 @@ struct QuarticSpline<const D: usize> {
     curve: Polynomial<D, 5>,
 }
 
-struct QuarticSplineBuilder<const D: usize> {
-    start: SVector<f64, D>,
-    end: SVector<f64, D>,
-    start_vel: SVector<f64, D>,
-    end_vel: SVector<f64, D>,
-    start_acc: SVector<f64, D>,
-}
-
-impl<const D: usize> QuarticSplineBuilder<D> {
+impl<const D: usize> QuarticSpline<D> {
     fn new(
         start: SVector<f64, D>,
         end: SVector<f64, D>,
         start_vel: SVector<f64, D>,
         end_vel: SVector<f64, D>,
         start_acc: SVector<f64, D>,
-    ) -> QuarticSplineBuilder<D> {
-        QuarticSplineBuilder {
-            start,
-            end,
-            start_vel,
-            end_vel,
-            start_acc,
-        }
-    }
-
-    fn build(self) -> QuarticSpline<D> {
+    ) -> QuarticSpline<D> {
         let b = SMatrix::<f64, D, 5>::from_columns(
-            [
-                self.start,
-                self.end,
-                self.start_vel,
-                self.end_vel,
-                self.start_acc,
-            ]
-            .as_ref(),
+            [start, end, start_vel, end_vel, start_acc].as_ref(),
         )
         .transpose();
 
@@ -116,6 +91,7 @@ mod tests {
     use rand::distributions::Uniform;
     use rand::prelude::*;
     use rand::rngs::SmallRng;
+    use splines::spline;
 
     use super::*;
     use crate::utils::test_utils::assert_feq;
@@ -174,7 +150,7 @@ mod tests {
         let end_vel = ReasonableFloat(0.5);
         let start_acc = ReasonableFloat(0.0);
 
-        let builder = QuarticSplineBuilder::new(
+        let spline = QuarticSpline::new(
             SVector::<f64, 1>::new(start.0),
             SVector::<f64, 1>::new(end.0),
             SVector::<f64, 1>::new(start_vel.0),
@@ -182,7 +158,6 @@ mod tests {
             SVector::<f64, 1>::new(start_acc.0),
         );
 
-        let spline = builder.build();
         let result = evaluate_polynomial(&spline.curve, 0.0);
         assert_feq(result[0], start.0);
 
@@ -207,7 +182,7 @@ mod tests {
         end_vel: ReasonableFloat,
         start_acc: ReasonableFloat,
     ) {
-        let builder = QuarticSplineBuilder::new(
+        let spline = QuarticSpline::new(
             SVector::<f64, 1>::new(start.0),
             SVector::<f64, 1>::new(end.0),
             SVector::<f64, 1>::new(start_vel.0),
@@ -215,7 +190,6 @@ mod tests {
             SVector::<f64, 1>::new(start_acc.0),
         );
 
-        let spline = builder.build();
         let result = evaluate_polynomial(&spline.curve, 0.0);
         assert_feq(result[0], start.0);
 
