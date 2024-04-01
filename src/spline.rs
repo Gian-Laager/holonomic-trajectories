@@ -84,6 +84,39 @@ impl<const D: usize> QuarticSpline<D> {
     }
 }
 
+struct CubicSpline<const D: usize> {
+    curve: Polynomial<D, 4>,
+}
+
+impl CubicSpline<3> {
+    fn new(
+        start: SVector<f64, 3>,
+        end: SVector<f64, 3>,
+        start_vel: SVector<f64, 3>,
+        end_vel: SVector<f64, 3>,
+    ) -> CubicSpline<3> {
+        let b = SMatrix::<f64, 3, 4>::from_columns([start, end, start_vel, end_vel].as_ref())
+            .transpose();
+
+        #[rustfmt::skip]
+        let a_inv = SMatrix::<f64, 4, 4>::from_row_slice(
+            [
+                 1.0,  0.0,  0.0,  0.0,
+                 0.0,  0.0,  1.0,  0.0, 
+                -3.0,  3.0, -2.0, -1.0, 
+                 2.0, -2.0,  1.0,  1.0,
+            ]
+            .as_ref(),
+        );
+
+        let curve = a_inv * b;
+
+        return CubicSpline {
+            curve: curve.transpose(),
+        };
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use quickcheck::{Arbitrary, Gen};
@@ -91,10 +124,10 @@ mod tests {
     use rand::distributions::Uniform;
     use rand::prelude::*;
     use rand::rngs::SmallRng;
-    use splines::spline;
 
     use super::*;
     use crate::utils::test_utils::assert_feq;
+    use crate::utils::Vec3;
 
     #[test]
     fn test_polynomial() {
@@ -139,6 +172,18 @@ mod tests {
             let mut rng = SmallRng::seed_from_u64(u64::arbitrary(g));
             let range = Uniform::new_inclusive(-100_000.0, 100_000.0);
             ReasonableFloat(range.sample(&mut rng))
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    struct ArbVec3(Vec3);
+
+    impl Arbitrary for ArbVec3 {
+        fn arbitrary(g: &mut Gen) -> ArbVec3 {
+            let x = ReasonableFloat::arbitrary(g);
+            let y = ReasonableFloat::arbitrary(g);
+            let z = ReasonableFloat::arbitrary(g);
+            ArbVec3(Vec3::new(x.0, y.0, z.0))
         }
     }
 
@@ -204,5 +249,91 @@ mod tests {
 
         let result_deriv_deriv = evaluate_polynomial(&derivative2nd_polynomial(&spline.curve), 0.0);
         assert_feq(result_deriv_deriv[0], start_acc.0);
+    }
+
+    #[quickcheck]
+    fn quickcheck_quartic_spline_nd(
+        start: ArbVec3,
+        end: ArbVec3,
+        start_vel: ArbVec3,
+        end_vel: ArbVec3,
+        start_acc: ArbVec3,
+    ) {
+        let spline = QuarticSpline::new(
+            start.0,
+            end.0,
+            start_vel.0,
+            end_vel.0,
+            start_acc.0,
+        );
+
+        let result = evaluate_polynomial(&spline.curve, 0.0);
+        assert_feq((result - start.0).norm(), 0.0);
+
+        let result = evaluate_polynomial(&spline.curve, 1.0);
+        assert_feq((result - end.0).norm(), 0.0);
+
+        let result_deriv = evaluate_polynomial(&derivative_polynomial(&spline.curve), 0.0);
+        assert_feq((result_deriv - start_vel.0).norm(), 0.0);
+
+        let result_deriv = evaluate_polynomial(&derivative_polynomial(&spline.curve), 1.0);
+        assert_feq((result_deriv - end_vel.0).norm(), 0.0);
+
+        let result_deriv_deriv = evaluate_polynomial(&derivative2nd_polynomial(&spline.curve), 0.0);
+        assert_feq((result_deriv_deriv - start_acc.0).norm(), 0.0);
+    }
+
+    #[test]
+    fn test_cube_spline() {
+        let start = ReasonableFloat(0.0);
+        let end = ReasonableFloat(1.0);
+        let start_vel = ReasonableFloat(-0.5);
+        let end_vel = ReasonableFloat(0.5);
+
+        let spline = CubicSpline::new(
+            SVector::<f64, 3>::new(start.0, 0.0, 0.0),
+            SVector::<f64, 3>::new(end.0, 0.0, 0.0),
+            SVector::<f64, 3>::new(start_vel.0, 0.0, 0.0),
+            SVector::<f64, 3>::new(end_vel.0, 0.0, 0.0),
+        );
+
+        let result = evaluate_polynomial(&spline.curve, 0.0);
+        assert_feq(result[0], start.0);
+
+        let result = evaluate_polynomial(&spline.curve, 1.0);
+        assert_feq(result[0], end.0);
+
+        let result_deriv = evaluate_polynomial(&derivative_polynomial(&spline.curve), 0.0);
+        assert_feq(result_deriv[0], start_vel.0);
+
+        let result_deriv = evaluate_polynomial(&derivative_polynomial(&spline.curve), 1.0);
+        assert_feq(result_deriv[0], end_vel.0);
+    }
+
+    #[quickcheck]
+    fn quickcheck_cube_spline(
+        start: ArbVec3,
+        end: ArbVec3,
+        start_vel: ArbVec3,
+        end_vel: ArbVec3,
+    ) {
+        let spline = CubicSpline::new(
+            start.0,
+            end.0,
+            start_vel.0,
+            end_vel.0,
+        );
+
+        let result = evaluate_polynomial(&spline.curve, 0.0);
+        assert_feq((result - start.0).norm(), 0.0);
+
+        let result = evaluate_polynomial(&spline.curve, 1.0);
+        assert_feq((result - end.0).norm(), 0.0);
+
+        let result_deriv = evaluate_polynomial(&derivative_polynomial(&spline.curve), 0.0);
+        assert_feq((result_deriv - start_vel.0).norm(), 0.0);
+
+        let result_deriv = evaluate_polynomial(&derivative_polynomial(&spline.curve), 1.0);
+        assert_feq((result_deriv - end_vel.0).norm(), 0.0);
     }
 }
