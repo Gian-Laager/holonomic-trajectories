@@ -10,6 +10,8 @@ use rand::prelude::*;
 #[cfg(test)]
 use rand::rngs::SmallRng;
 
+use crate::spline::C2Spline;
+
 #[derive(Clone, Copy, Debug)]
 pub enum SCurveGenerationError {
     StartVelTooHigh,
@@ -235,6 +237,25 @@ impl SCurve {
     }
 }
 
+
+impl C2Spline<1> for SCurve {
+    fn evaluate(&self, x: f64) -> SVector<f64, 1> {
+        SVector::<f64, 1>::new(self.sample_pos(x))
+    }
+
+    fn derivative(&self, x: f64) -> SVector<f64, 1> {
+        SVector::<f64, 1>::new(self.sample_vel(x))
+    }
+
+    fn derivative2nd(&self, x: f64) -> SVector<f64, 1> {
+        SVector::<f64, 1>::new(self.sample_accel(x))
+    }
+
+    fn range(&self) -> crate::utils::Interval {
+        crate::utils::Interval::new_closed(self.start_time, self.start_time + self.duration())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use quickcheck_macros::quickcheck;
@@ -388,7 +409,7 @@ mod tests {
     }
 
     #[test]
-    fn stationary_scurve() {
+    fn test_stationary_scurve() {
         let start_pos = 0.0;
         let start_vel = 0.0;
         let end_pos = 0.0;
@@ -424,9 +445,49 @@ mod tests {
         assert_feq(*sample_pos.last().unwrap(), end_pos);
     }
 
-    // #[ignore]
+    #[ignore = "This test is mathematically almost impossible to pass"]
     #[quickcheck]
-    fn scurve_quickcheck(mut curve: SCurve) -> bool {
+    fn quickcheck_scurve_no_vel_change(seed: u64) -> bool {
+        let mut rng = SmallRng::seed_from_u64(seed);
+
+        let start_pos = 0.0;
+        let max_vel = rng.gen_range(f32::EPSILON.sqrt() as f64..10000.0);
+        let start_vel = rng.gen_range(-max_vel..max_vel);
+        let end_pos = 0.0;
+        let end_vel = rng.gen_range(-max_vel..max_vel);
+        let max_accel = 5.0;
+
+        const N_SAMPLES: usize = 100;
+        const N_SAMPLES_F: f64 = N_SAMPLES as f64;
+
+        let curve = SCurve::try_new(
+            0.0, start_pos, start_vel, end_pos, end_vel, max_vel, max_accel,
+        )
+        .unwrap();
+
+        let duration = curve.duration();
+        let sample_pos = (0..=N_SAMPLES)
+            .map(|i| curve.sample_pos(i as f64 * duration / N_SAMPLES_F))
+            .collect::<Vec<f64>>();
+
+        let sample_vel = (0..=N_SAMPLES)
+            .map(|i| curve.sample_vel(i as f64 * duration / N_SAMPLES_F))
+            .collect::<Vec<f64>>();
+
+        let sample_accel = (0..=N_SAMPLES)
+            .map(|i| curve.sample_accel(i as f64 * duration / N_SAMPLES_F))
+            .collect::<Vec<f64>>();
+
+        sample_accel.iter().for_each(|a| assert!(*a <= max_accel));
+        sample_vel.iter().for_each(|v| assert!(*v <= max_vel));
+
+        assert_feq(sample_pos[0], start_pos);
+        assert_feq(*sample_pos.last().unwrap(), end_pos);
+        return true;
+    }
+
+    #[quickcheck]
+    fn quickcheck_scurve(mut curve: SCurve) -> bool {
         curve.start_time = 0.0;
         let curve = curve;
         let duration = curve.duration();

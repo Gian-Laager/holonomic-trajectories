@@ -7,6 +7,7 @@ extern crate quickcheck_macros;
 mod utils;
 mod scurve;
 mod spline;
+mod polynomials;
 
 use nalgebra::{DimName, SVector, Scalar, Vector2, Vector3};
 
@@ -26,6 +27,6 @@ struct DriveSpecs {
 }
 
 
-fn main() {
-    println!("Hello, world!");
-}
+// fn main() {
+//     println!("Hello, world!");
+// }
